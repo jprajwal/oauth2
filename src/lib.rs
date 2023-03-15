@@ -1,8 +1,7 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
-use std::default::Default;
-use std::iter::IntoIterator;
+use ureq;
 use url::{ParseError, Url};
 
 #[derive(Default, Debug, PartialEq, Eq)]
@@ -86,8 +85,156 @@ impl AuthCodeRequest {
     }
 }
 
-mod utils {
+#[derive(Debug)]
+struct AuthCodeAccessTokenRequest {
+    token_url: String,
+    grant_type: String,
+    code: String,
+    redirect_url: Option<String>,
+    client_id: Option<String>,
+    client_secret: Option<String>,
+    extras: Option<HashMap<String, String>>,
+}
 
+impl AuthCodeAccessTokenRequest {
+    fn new(token_url: String, grant_type: String, code: String) -> Self {
+        AuthCodeAccessTokenRequest {
+            token_url,
+            grant_type,
+            code,
+            redirect_url: None,
+            client_id: None,
+            client_secret: None,
+            extras: None,
+        }
+    }
+
+    fn extra_params(mut self, k: String, v: String) -> Self {
+        self.extras.get_or_insert(HashMap::new()).insert(k, v);
+        self
+    }
+
+    fn set_redirect_url(mut self, redirect_url: String) -> Self {
+        self.redirect_url = Some(redirect_url);
+        self
+    }
+
+    fn set_client_id(mut self, client_id: String) -> Self {
+        self.client_id = Some(client_id);
+        self
+    }
+
+    fn set_client_secret(mut self, client_secret: String) -> Self {
+        self.client_secret = Some(client_secret);
+        self
+    }
+
+    fn into_url(&mut self) -> Result<String, ParseError> {
+        let mut url = Url::parse(self.token_url.as_str())?;
+        let url = url.query_pairs_mut().clear().finish();
+        return Ok(url.to_string());
+    }
+
+    fn get_token(&mut self) -> Result<AuthCodeToken, ()> {
+        let url = self.into_url().map_err(|_| ())?;
+        let mut form_data = vec![
+            ("grant_type", self.grant_type.as_str()),
+            ("code", self.code.as_str()),
+        ];
+        if let Some(ref redirect_url) = self.redirect_url {
+            form_data.push(("redirect_uri", redirect_url.as_str()));
+        }
+        if let Some(ref client_id) = self.client_id {
+            form_data.push(("client_id", client_id.as_str()));
+        }
+        if let Some(ref client_secret) = self.client_secret {
+            form_data.push(("client_secret", client_secret.as_str()));
+        }
+        let response: HashMap<String, String> = ureq::post(url.as_str())
+            .send_form(form_data.as_slice())
+            .map_err(|_| ())
+            .and_then(|resp| match resp.status() {
+                200 => resp.into_json().map_err(|_| ()),
+                _ => Err(()),
+            })?;
+
+        let mut token = AuthCodeToken::new(
+            response
+                .get("access_token")
+                .map_or(String::default(), |s| s.to_owned()),
+            response
+                .get("token_type")
+                .map_or(String::default(), |s| s.to_owned()),
+        );
+        if let Some(refresh_token) = response.get("refresh_token") {
+            token = token.set_refresh_token(refresh_token.to_owned());
+        }
+        if let Some(expires_in) = response.get("expires_in") {
+            token = token.set_exprires_in(expires_in.parse().unwrap_or(u32::default()));
+        }
+        if let Some(ref scopes) = response.get("scope") {
+            token = token.set_scope(scopes.split(' ').map(|s| s.to_owned()).collect());
+        }
+        return Ok(token);
+    }
+}
+
+struct AuthCodeToken {
+    access_token: String,
+    token_type: String,
+    refresh_token: Option<String>,
+    expires_in: Option<u32>,
+    scope: Option<Vec<String>>,
+}
+
+/*
+impl Deserialize for AuthCodeToken {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: ureq::serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_struct(
+            "AuthCodeToken",
+            &[
+                "access_token",
+                "token_type",
+                "refresh_token",
+                "expires_in",
+                "scope",
+            ],
+        )
+    }
+}
+ */
+
+impl AuthCodeToken {
+    fn new(access_token: String, token_type: String) -> Self {
+        AuthCodeToken {
+            access_token,
+            token_type,
+            refresh_token: None,
+            expires_in: None,
+            scope: None,
+        }
+    }
+
+    fn set_refresh_token(mut self, refresh_token: String) -> Self {
+        self.refresh_token = Some(refresh_token);
+        self
+    }
+
+    fn set_exprires_in(mut self, expires_in: u32) -> Self {
+        self.expires_in = Some(expires_in);
+        self
+    }
+
+    fn set_scope(mut self, scopes: Vec<String>) -> Self {
+        self.scope = Some(scopes);
+        self
+    }
+}
+
+mod utils {
     pub fn join<'a, I, T>(mut str_iter: I, sep: char) -> String
     where
         I: Iterator<Item = &'a T>,
