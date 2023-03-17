@@ -3,7 +3,9 @@
 use serde::{self, Deserialize, Serialize};
 use serde_json;
 use serde_urlencoded;
+use std::cmp::PartialEq;
 use std::collections::HashMap;
+use std::time::SystemTime;
 
 #[derive(Default, Debug, PartialEq, Eq)]
 struct AuthCodeRequest {
@@ -186,13 +188,25 @@ trait Token {
     fn is_valid(&self) -> bool;
 }
 
-#[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Eq, Deserialize, Serialize)]
 struct AuthCodeToken {
     access_token: String,
     token_type: String,
     refresh_token: Option<String>,
     expires_in: Option<u32>,
     scope: Option<Vec<String>>,
+    #[serde(skip, default = "SystemTime::now")]
+    generated_time: SystemTime,
+}
+
+impl PartialEq for AuthCodeToken {
+    fn eq(&self, other: &Self) -> bool {
+        self.access_token == other.access_token
+            && self.token_type == other.token_type
+            && self.refresh_token == other.refresh_token
+            && self.expires_in == other.expires_in
+            && self.scope == other.scope
+    }
 }
 
 impl Token for AuthCodeToken {
@@ -228,7 +242,21 @@ impl Token for AuthCodeToken {
     }
 
     fn is_valid(&self) -> bool {
-        true
+        match self.expires_in {
+            Some(expires_in) => {
+                match self.generated_time.elapsed() {
+                    Ok(elapsed) => (elapsed.as_secs() as u32) < expires_in,
+                    // if err, then assume that the token is valid so that the
+                    // user can try accessing the protected resource using the
+                    // current token.
+                    Err(_) => true,
+                }
+            }
+            // if None, then the auth server did not provide the expiration
+            // info. So, there is no other choice but to use the access token
+            // and try to access the protected resource.
+            None => true,
+        }
     }
 }
 
@@ -240,6 +268,7 @@ impl AuthCodeToken {
             refresh_token: None,
             expires_in: None,
             scope: None,
+            generated_time: SystemTime::now(),
         }
     }
 }
@@ -269,6 +298,7 @@ mod utils {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
     #[test]
     fn test_default() {
         let def = AuthCodeRequest::default();
@@ -363,7 +393,36 @@ mod tests {
             refresh_token: Some("test_refresh_token".into()),
             expires_in: Some(3600),
             scope: None,
+            generated_time: SystemTime::now(),
         };
         assert_eq!(token_request.get_token(requester), Ok(expected_token));
+    }
+
+    #[test]
+    fn test_auth_token_is_valid() {
+        let now = SystemTime::now();
+        let token = AuthCodeToken {
+            access_token: "test_token".into(),
+            token_type: "Bearer".into(),
+            refresh_token: Some("test_refresh_token".into()),
+            expires_in: Some(3600),
+            scope: None,
+            generated_time: now.checked_sub(Duration::from_secs(3599)).unwrap(),
+        };
+        assert_eq!(token.is_valid(), true);
+    }
+
+    #[test]
+    fn test_auth_token_is_valid_not_valid() {
+        let now = SystemTime::now();
+        let token = AuthCodeToken {
+            access_token: "test_token".into(),
+            token_type: "Bearer".into(),
+            refresh_token: Some("test_refresh_token".into()),
+            expires_in: Some(3600),
+            scope: None,
+            generated_time: now.checked_sub(Duration::from_secs(3600)).unwrap(),
+        };
+        assert_eq!(token.is_valid(), false);
     }
 }
