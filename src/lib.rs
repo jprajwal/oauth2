@@ -3,8 +3,11 @@
 use serde::{self, Deserialize, Serialize};
 use serde_json;
 use serde_urlencoded;
+use std::boxed::Box;
 use std::cmp::PartialEq;
 use std::collections::HashMap;
+use std::error::Error;
+use std::fmt::Display;
 use std::time::SystemTime;
 
 #[derive(Default, Debug, PartialEq, Eq)]
@@ -145,12 +148,12 @@ impl AuthCodeAccessTokenRequest {
         self
     }
 
-    fn token_url(&mut self) -> Result<String, ()> {
+    fn token_url(&mut self) -> Result<String, Box<dyn Error>> {
         // TODO: Validate URL
         return Ok(self.token_url.clone());
     }
 
-    fn req_body(&mut self) -> Result<String, ()> {
+    fn req_body(&mut self) -> Result<String, Box<dyn Error>> {
         let mut params = vec![
             ("grant_type", self.grant_type.as_str()),
             ("code", self.code.as_str()),
@@ -164,16 +167,26 @@ impl AuthCodeAccessTokenRequest {
         if let Some(ref client_secret) = self.client_secret {
             params.push(("client_secret", client_secret.as_str()));
         }
-        let body = serde_urlencoded::to_string(&params).map_err(|_| ())?;
+        let body = serde_urlencoded::to_string(&params).map_err(|e| e.to_string())?;
         Ok(body)
     }
 
-    fn get_token<T: PostRequest>(&mut self, requester: T) -> Result<AuthCodeToken, ()> {
-        let url = self.token_url().map_err(|_| ())?;
-        let form_data = self.req_body().map_err(|_| ())?;
-        let response = requester.post(url, form_data).map_err(|_| ())?;
-        let token: AuthCodeToken = serde_json::from_str(response.as_str()).map_err(|_| ())?;
-        return Ok(token);
+    fn get_token<T: PostRequest>(&mut self, requester: T) -> Result<AuthCodeToken, Box<dyn Error>> {
+        let url = self.token_url().map_err(|e| e.to_string())?;
+        let form_data = self.req_body().map_err(|e| e.to_string())?;
+        let (status_code, response) = requester.post(url, form_data).map_err(|e| e.to_string())?;
+        match status_code {
+            status if status >= 200 && status < 300 => {
+                let token: AuthCodeToken =
+                    serde_json::from_str(response.as_str()).map_err(|e| e.to_string())?;
+                return Ok(token);
+            }
+            _ => {
+                let error: AuthTokenError =
+                    serde_json::from_str(response.as_str()).map_err(|e| e.to_string())?;
+                return Err(Box::new(error));
+            }
+        }
     }
 }
 
@@ -274,7 +287,140 @@ impl AuthCodeToken {
 }
 
 trait PostRequest {
-    fn post(&self, url: String, body: String) -> Result<String, ()>;
+    fn post(&self, url: String, body: String) -> Result<(u16, String), Box<dyn Error>>;
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct AuthCodeResponse {
+    code: String,
+    state: Option<String>,
+}
+
+impl AuthCodeResponse {
+    fn new(code: String) -> Self {
+        AuthCodeResponse { code, state: None }
+    }
+
+    fn set_state(mut self, state: String) -> Self {
+        self.state = Some(state);
+        self
+    }
+
+    fn get_code(&self) -> String {
+        self.code.clone()
+    }
+
+    fn get_state(&self) -> Option<String> {
+        self.state.clone()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum AuthCodeErrorKind {
+    InvalidRequest,
+    UnauthorizedClient,
+    AccessDenied,
+    UnsupportedResponseType,
+    InvalidScope,
+    ServerError,
+    TemporarilyUnavailable,
+}
+
+impl Display for AuthCodeErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use AuthCodeErrorKind::*;
+        write!(
+            f,
+            "AuthErrorKind::{}",
+            match self {
+                InvalidRequest => "InvalidRequest",
+                UnauthorizedClient => "UnauthorizedClient",
+                AccessDenied => "AccessDenied",
+                UnsupportedResponseType => "UnsupportedResponseType",
+                InvalidScope => "InvalidScope",
+                ServerError => "ServerError",
+                TemporarilyUnavailable => "TemporarilyUnavailable",
+            }
+        )
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct AuthCodeError {
+    error: AuthCodeErrorKind,
+    error_description: Option<String>,
+    error_uri: Option<String>,
+    state: Option<String>,
+}
+
+impl Display for AuthCodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "AuthError(error = {}, error_description = {}, error_url = {}, state = {})",
+            self.error,
+            self.error_description
+                .as_ref()
+                .unwrap_or(&String::default()),
+            self.error_uri.as_ref().unwrap_or(&String::default()),
+            self.state.as_ref().unwrap_or(&String::default()),
+        )
+    }
+}
+
+impl Error for AuthCodeError {}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum AuthTokenErrorKind {
+    InvalidRequest,
+    InvalidClient,
+    InvalidGrant,
+    UnauthorizedClient,
+    UnsupportedGrantType,
+    InvalidScope,
+}
+
+impl Display for AuthTokenErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use AuthTokenErrorKind::*;
+        write!(
+            f,
+            "AuthCodeErrorKind::{}",
+            match self {
+                InvalidRequest => "InvalidRequest",
+                InvalidClient => "InvalidClient",
+                InvalidGrant => "InvalidGrant",
+                UnauthorizedClient => "UnauthorizedClient",
+                UnsupportedGrantType => "UnsupportedGrantType",
+                InvalidScope => "InvalidScope",
+            }
+        )
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct AuthTokenError {
+    error: AuthTokenErrorKind,
+    error_description: Option<String>,
+    error_ui: Option<String>,
+}
+
+impl Error for AuthTokenError {}
+
+impl Display for AuthTokenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "AuthTokenError(error = {}, error_description = {}, error_ui = {})",
+            self.error,
+            self.error_description
+                .as_ref()
+                .unwrap_or(&String::default()),
+            self.error_ui.as_ref().unwrap_or(&String::default())
+        )
+    }
 }
 
 mod utils {
@@ -373,8 +519,8 @@ mod tests {
     }
 
     impl PostRequest for TestPostRequester {
-        fn post(&self, _url: String, _body: String) -> Result<String, ()> {
-            Ok(self.response.clone())
+        fn post(&self, _url: String, _body: String) -> Result<(u16, String), Box<dyn Error>> {
+            Ok((200, self.response.clone()))
         }
     }
 
@@ -395,7 +541,7 @@ mod tests {
             scope: None,
             generated_time: SystemTime::now(),
         };
-        assert_eq!(token_request.get_token(requester), Ok(expected_token));
+        assert_eq!(token_request.get_token(requester).unwrap(), expected_token);
     }
 
     #[test]
