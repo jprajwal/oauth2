@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+// #![allow(dead_code)]
 
 use serde::{self, Deserialize, Serialize};
 use serde_json;
@@ -11,7 +11,7 @@ use std::fmt::Display;
 use std::time::SystemTime;
 
 #[derive(Default, Debug, PartialEq, Eq)]
-struct AuthCodeRequest {
+pub struct AuthCodeRequest {
     auth_url: String,
     client_id: String,
     response_type: String,
@@ -22,7 +22,7 @@ struct AuthCodeRequest {
 }
 
 impl AuthCodeRequest {
-    fn new(auth_url: String, client_id: String, response_type: String) -> Self {
+    pub fn new(auth_url: String, client_id: String, response_type: String) -> Self {
         Self {
             auth_url,
             client_id,
@@ -34,17 +34,17 @@ impl AuthCodeRequest {
         }
     }
 
-    fn set_redirect_url(mut self, redirect_url: String) -> Self {
+    pub fn set_redirect_url(mut self, redirect_url: String) -> Self {
         self.redirect_url = Some(redirect_url);
         self
     }
 
-    fn add_scope(mut self, scope: String) -> Self {
+    pub fn add_scope(mut self, scope: String) -> Self {
         self.scope.get_or_insert(vec![]).push(scope);
         self
     }
 
-    fn add_scopes<I>(mut self, scopes: I) -> Self
+    pub fn add_scopes<I>(mut self, scopes: I) -> Self
     where
         I: IntoIterator<Item = String>,
     {
@@ -57,17 +57,17 @@ impl AuthCodeRequest {
         self
     }
 
-    fn set_state(mut self, state: String) -> Self {
+    pub fn set_state(mut self, state: String) -> Self {
         self.state = Some(state);
         self
     }
 
-    fn extra_params(mut self, k: String, v: String) -> Self {
+    pub fn extra_params(mut self, k: String, v: String) -> Self {
         self.extras.get_or_insert(HashMap::new()).insert(k, v);
         self
     }
 
-    fn get_url(&self) -> Result<String, ()> {
+    pub fn get_url(&self) -> Result<String, Box<dyn Error>> {
         let mut url: String = self.auth_url.clone();
 
         let result: String;
@@ -97,7 +97,7 @@ impl AuthCodeRequest {
         url.push('?');
         url.push_str(
             serde_urlencoded::to_string(params)
-                .map_err(|_| ())?
+                .map_err(|e| e.to_string())?
                 .as_str(),
         );
         Ok(url.to_string())
@@ -105,7 +105,7 @@ impl AuthCodeRequest {
 }
 
 #[derive(Debug)]
-struct AuthCodeAccessTokenRequest {
+pub struct AuthCodeAccessTokenRequest {
     token_url: String,
     grant_type: String,
     code: String,
@@ -116,7 +116,7 @@ struct AuthCodeAccessTokenRequest {
 }
 
 impl AuthCodeAccessTokenRequest {
-    fn new(token_url: String, grant_type: String, code: String) -> Self {
+    pub fn new(token_url: String, grant_type: String, code: String) -> Self {
         AuthCodeAccessTokenRequest {
             token_url,
             grant_type,
@@ -128,32 +128,32 @@ impl AuthCodeAccessTokenRequest {
         }
     }
 
-    fn extra_params(mut self, k: String, v: String) -> Self {
+    pub fn extra_params(mut self, k: String, v: String) -> Self {
         self.extras.get_or_insert(HashMap::new()).insert(k, v);
         self
     }
 
-    fn set_redirect_url(mut self, redirect_url: String) -> Self {
+    pub fn set_redirect_url(mut self, redirect_url: String) -> Self {
         self.redirect_url = Some(redirect_url);
         self
     }
 
-    fn set_client_id(mut self, client_id: String) -> Self {
+    pub fn set_client_id(mut self, client_id: String) -> Self {
         self.client_id = Some(client_id);
         self
     }
 
-    fn set_client_secret(mut self, client_secret: String) -> Self {
+    pub fn set_client_secret(mut self, client_secret: String) -> Self {
         self.client_secret = Some(client_secret);
         self
     }
 
-    fn token_url(&mut self) -> Result<String, Box<dyn Error>> {
+    fn token_url(&self) -> Result<String, Box<dyn Error>> {
         // TODO: Validate URL
         return Ok(self.token_url.clone());
     }
 
-    fn req_body(&mut self) -> Result<String, Box<dyn Error>> {
+    fn req_body(&self) -> Result<String, Box<dyn Error>> {
         let mut params = vec![
             ("grant_type", self.grant_type.as_str()),
             ("code", self.code.as_str()),
@@ -171,7 +171,7 @@ impl AuthCodeAccessTokenRequest {
         Ok(body)
     }
 
-    fn get_token<T: PostRequest>(&mut self, requester: T) -> Result<AuthCodeToken, Box<dyn Error>> {
+    pub fn get_token<T: PostRequest>(&self, requester: T) -> Result<AuthCodeToken, Box<dyn Error>> {
         let url = self.token_url().map_err(|e| e.to_string())?;
         let form_data = self.req_body().map_err(|e| e.to_string())?;
         let (status_code, response) = requester.post(url, form_data).map_err(|e| e.to_string())?;
@@ -190,7 +190,7 @@ impl AuthCodeAccessTokenRequest {
     }
 }
 
-trait Token {
+pub trait Token {
     fn set_refresh_token(self, refresh_token: String) -> Self;
     fn set_exprires_in(self, expires_in: u32) -> Self;
     fn set_scope(self, scopes: Vec<String>) -> Self;
@@ -202,7 +202,7 @@ trait Token {
 }
 
 #[derive(Debug, Eq, Deserialize, Serialize)]
-struct AuthCodeToken {
+pub struct AuthCodeToken {
     access_token: String,
     token_type: String,
     refresh_token: Option<String>,
@@ -274,7 +274,7 @@ impl Token for AuthCodeToken {
 }
 
 impl AuthCodeToken {
-    fn new(access_token: String, token_type: String) -> Self {
+    pub fn new(access_token: String, token_type: String) -> Self {
         AuthCodeToken {
             access_token,
             token_type,
@@ -286,38 +286,38 @@ impl AuthCodeToken {
     }
 }
 
-trait PostRequest {
+pub trait PostRequest {
     fn post(&self, url: String, body: String) -> Result<(u16, String), Box<dyn Error>>;
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct AuthCodeResponse {
+pub struct AuthCodeResponse {
     code: String,
     state: Option<String>,
 }
 
 impl AuthCodeResponse {
-    fn new(code: String) -> Self {
+    pub fn new(code: String) -> Self {
         AuthCodeResponse { code, state: None }
     }
 
-    fn set_state(mut self, state: String) -> Self {
+    pub fn set_state(mut self, state: String) -> Self {
         self.state = Some(state);
         self
     }
 
-    fn get_code(&self) -> String {
+    pub fn get_code(&self) -> String {
         self.code.clone()
     }
 
-    fn get_state(&self) -> Option<String> {
+    pub fn get_state(&self) -> Option<String> {
         self.state.clone()
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum AuthCodeErrorKind {
+pub enum AuthCodeErrorKind {
     InvalidRequest,
     UnauthorizedClient,
     AccessDenied,
@@ -347,7 +347,7 @@ impl Display for AuthCodeErrorKind {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct AuthCodeError {
+pub struct AuthCodeError {
     error: AuthCodeErrorKind,
     error_description: Option<String>,
     error_uri: Option<String>,
@@ -401,7 +401,7 @@ impl Display for AuthTokenErrorKind {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct AuthTokenError {
+pub struct AuthTokenError {
     error: AuthTokenErrorKind,
     error_description: Option<String>,
     error_ui: Option<String>,
