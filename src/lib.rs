@@ -207,6 +207,7 @@ pub struct AuthCodeToken {
     token_type: String,
     refresh_token: Option<String>,
     expires_in: Option<u32>,
+    #[serde(skip)] // TODO: parse scopes into vector
     scope: Option<Vec<String>>,
     #[serde(skip, default = "SystemTime::now")]
     generated_time: SystemTime,
@@ -297,8 +298,19 @@ pub struct AuthCodeResponse {
 }
 
 impl AuthCodeResponse {
-    pub fn new(code: String) -> Self {
-        AuthCodeResponse { code, state: None }
+    pub fn new(code: String) -> Result<Self, Box<dyn Error>> {
+        let mut code_as_query = String::from("code=");
+        code_as_query.push_str(code.as_str());
+        let parsed_code: String =
+            serde_urlencoded::from_str::<Vec<(String, String)>>(code_as_query.as_str())?
+                .into_iter()
+                .next()
+                .unwrap()
+                .1;
+        Ok(AuthCodeResponse {
+            code: parsed_code,
+            state: None,
+        })
     }
 
     pub fn set_state(mut self, state: String) -> Self {
@@ -531,7 +543,7 @@ mod tests {
                 r#"{"access_token": "test_token", "refresh_token": "test_refresh_token", "expires_in": 3600, "token_type": "Bearer"}"#,
             ),
         };
-        let mut token_request =
+        let token_request =
             AuthCodeAccessTokenRequest::new("test_url".into(), "code".into(), "test_code".into());
         let expected_token = AuthCodeToken {
             access_token: "test_token".into(),
