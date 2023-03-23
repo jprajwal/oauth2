@@ -1,5 +1,3 @@
-// #![allow(dead_code)]
-
 use serde::{self, Deserialize, Serialize};
 use serde_json;
 use serde_urlencoded;
@@ -105,25 +103,27 @@ impl AuthCodeRequest {
 }
 
 #[derive(Debug)]
-pub struct AuthCodeAccessTokenRequest {
+pub struct AccessTokenRequest {
     token_url: String,
     grant_type: String,
-    code: String,
+    code: Option<String>,
     redirect_url: Option<String>,
     client_id: Option<String>,
     client_secret: Option<String>,
+    scope: Option<Vec<String>>,
     extras: Option<HashMap<String, String>>,
 }
 
-impl AuthCodeAccessTokenRequest {
-    pub fn new(token_url: String, grant_type: String, code: String) -> Self {
-        AuthCodeAccessTokenRequest {
+impl AccessTokenRequest {
+    pub fn new(token_url: String, grant_type: String) -> Self {
+        AccessTokenRequest {
             token_url,
             grant_type,
-            code,
+            code: None,
             redirect_url: None,
             client_id: None,
             client_secret: None,
+            scope: None,
             extras: None,
         }
     }
@@ -148,16 +148,21 @@ impl AuthCodeAccessTokenRequest {
         self
     }
 
+    pub fn set_scope(mut self, scope: Vec<String>) -> Self {
+        self.scope = Some(scope);
+        return self;
+    }
+
     fn token_url(&self) -> Result<String, Box<dyn Error>> {
         // TODO: Validate URL
         return Ok(self.token_url.clone());
     }
 
     fn req_body(&self) -> Result<String, Box<dyn Error>> {
-        let mut params = vec![
-            ("grant_type", self.grant_type.as_str()),
-            ("code", self.code.as_str()),
-        ];
+        let mut params = vec![("grant_type", self.grant_type.as_str())];
+        if let Some(ref code) = self.code {
+            params.push(("code", code));
+        }
         if let Some(ref redirect_url) = self.redirect_url {
             params.push(("redirect_uri", redirect_url.as_str()));
         }
@@ -174,7 +179,13 @@ impl AuthCodeAccessTokenRequest {
     pub fn get_token<T: PostRequest>(&self, requester: T) -> Result<AuthCodeToken, Box<dyn Error>> {
         let url = self.token_url().map_err(|e| e.to_string())?;
         let form_data = self.req_body().map_err(|e| e.to_string())?;
-        let (status_code, response) = requester.post(url, form_data).map_err(|e| e.to_string())?;
+        let headers = vec![(
+            "Content-Type".into(),
+            "application/x-www-form-urlencoded".into(),
+        )];
+        let (status_code, response) = requester
+            .post(url, form_data, headers)
+            .map_err(|e| e.to_string())?;
         match status_code {
             status if status >= 200 && status < 300 => {
                 let token: AuthCodeToken =
@@ -288,7 +299,12 @@ impl AuthCodeToken {
 }
 
 pub trait PostRequest {
-    fn post(&self, url: String, body: String) -> Result<(u16, String), Box<dyn Error>>;
+    fn post(
+        &self,
+        url: String,
+        body: String,
+        headers: Vec<(String, String)>,
+    ) -> Result<(u16, String), Box<dyn Error>>;
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -531,7 +547,12 @@ mod tests {
     }
 
     impl PostRequest for TestPostRequester {
-        fn post(&self, _url: String, _body: String) -> Result<(u16, String), Box<dyn Error>> {
+        fn post(
+            &self,
+            _url: String,
+            _body: String,
+            _headers: Vec<(String, String)>,
+        ) -> Result<(u16, String), Box<dyn Error>> {
             Ok((200, self.response.clone()))
         }
     }
@@ -543,8 +564,7 @@ mod tests {
                 r#"{"access_token": "test_token", "refresh_token": "test_refresh_token", "expires_in": 3600, "token_type": "Bearer"}"#,
             ),
         };
-        let token_request =
-            AuthCodeAccessTokenRequest::new("test_url".into(), "code".into(), "test_code".into());
+        let token_request = AccessTokenRequest::new("test_url".into(), "code".into());
         let expected_token = AuthCodeToken {
             access_token: "test_token".into(),
             token_type: "Bearer".into(),
