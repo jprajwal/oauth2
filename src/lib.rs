@@ -1,3 +1,4 @@
+use serde::de::DeserializeOwned;
 use serde::{self, Deserialize, Serialize};
 use serde_json;
 use serde_urlencoded;
@@ -103,7 +104,7 @@ impl AuthCodeRequest {
 }
 
 #[derive(Debug)]
-pub struct AccessTokenRequest {
+pub struct AuthCodeAccessTokenRequest {
     token_url: String,
     grant_type: String,
     code: Option<String>,
@@ -114,9 +115,9 @@ pub struct AccessTokenRequest {
     extras: Option<HashMap<String, String>>,
 }
 
-impl AccessTokenRequest {
+impl AuthCodeAccessTokenRequest {
     pub fn new(token_url: String, grant_type: String) -> Self {
-        AccessTokenRequest {
+        AuthCodeAccessTokenRequest {
             token_url,
             grant_type,
             code: None,
@@ -181,7 +182,11 @@ impl AccessTokenRequest {
         Ok(body)
     }
 
-    pub fn get_token<T: PostRequest>(&self, requester: T) -> Result<AuthCodeToken, Box<dyn Error>> {
+    pub fn get_token<'a, T, R>(&self, requester: R) -> Result<T, Box<dyn Error>>
+    where
+        T: Token + DeserializeOwned,
+        R: PostRequest,
+    {
         let url = self.token_url().map_err(|e| e.to_string())?;
         let form_data = self.req_body().map_err(|e| e.to_string())?;
         let headers = vec![(
@@ -193,7 +198,7 @@ impl AccessTokenRequest {
             .map_err(|e| e.to_string())?;
         match status_code {
             status if status >= 200 && status < 300 => {
-                let token: AuthCodeToken =
+                let token: T =
                     serde_json::from_str(response.as_str()).map_err(|e| e.to_string())?;
                 return Ok(token);
             }
@@ -456,6 +461,78 @@ impl Display for AuthTokenError {
     }
 }
 
+#[derive(Debug)]
+pub struct OwnerPasswordAccessTokenRequest {
+    token_url: String,
+    username: String,
+    password: String,
+    scope: Option<Vec<String>>,
+}
+
+impl OwnerPasswordAccessTokenRequest {
+    pub fn new(token_url: String, username: String, password: String) -> Self {
+        OwnerPasswordAccessTokenRequest {
+            token_url,
+            username,
+            password,
+            scope: None,
+        }
+    }
+
+    pub fn set_scope(mut self, scopes: Vec<String>) -> Self {
+        self.scope = Some(scopes);
+        self
+    }
+
+    fn req_body(&self) -> Result<String, Box<dyn Error>> {
+        let scope_as_string: String = self
+            .scope
+            .clone()
+            .map_or(String::default(), |scopes| scopes.join(" "));
+        let params = vec![
+            ("grant_type", "password"),
+            ("username", self.username.as_str()),
+            ("password", self.password.as_str()),
+            ("scope", scope_as_string.as_str()),
+        ];
+        let body = serde_urlencoded::to_string(&params).map_err(|e| e.to_string())?;
+        Ok(body)
+    }
+
+    fn token_url(&self) -> Result<String, Box<dyn Error>> {
+        // TODO: Validate URL
+        return Ok(self.token_url.clone());
+    }
+
+    pub fn get_token<T, R>(&self, requester: R) -> Result<T, Box<dyn Error>>
+    where
+        T: Token + DeserializeOwned,
+        R: PostRequest,
+    {
+        let url = self.token_url().map_err(|e| e.to_string())?;
+        let form_data = self.req_body().map_err(|e| e.to_string())?;
+        let headers = vec![(
+            "Content-Type".into(),
+            "application/x-www-form-urlencoded".into(),
+        )];
+        let (status_code, response) = requester
+            .post(url, form_data, headers)
+            .map_err(|e| e.to_string())?;
+        match status_code {
+            status if status >= 200 && status < 300 => {
+                let token: T =
+                    serde_json::from_str(response.as_str()).map_err(|e| e.to_string())?;
+                return Ok(token);
+            }
+            _ => {
+                let error: AuthTokenError =
+                    serde_json::from_str(response.as_str()).map_err(|e| e.to_string())?;
+                return Err(Box::new(error));
+            }
+        }
+    }
+}
+
 mod utils {
     use serde::{Deserialize, Deserializer};
     pub fn join<'a, I, T>(mut str_iter: I, sep: char) -> String
@@ -586,19 +663,29 @@ mod tests {
     fn test_auth_code_get_token() {
         let requester = TestPostRequester {
             response: String::from(
-                r#"{"access_token": "test_token", "refresh_token": "test_refresh_token", "expires_in": 3600, "token_type": "Bearer"}"#,
+                r#"{
+                    "access_token": "test_token",
+                    "refresh_token": "test_refresh_token",
+                    "expires_in": 3600,
+                    "token_type": "Bearer",
+                    "scope": "test_scope test_another_scope"
+                }"#,
             ),
         };
-        let token_request = AccessTokenRequest::new("test_url".into(), "code".into());
+        let token_request = AuthCodeAccessTokenRequest::new("test_url".into(), "code".into());
         let expected_token = AuthCodeToken {
             access_token: "test_token".into(),
             token_type: "Bearer".into(),
             refresh_token: Some("test_refresh_token".into()),
             expires_in: Some(3600),
-            scope: None,
+            scope: Some(vec![
+                "test_scope".to_owned(),
+                "test_another_scope".to_owned(),
+            ]),
             generated_time: SystemTime::now(),
         };
-        assert_eq!(token_request.get_token(requester).unwrap(), expected_token);
+        let token: AuthCodeToken = token_request.get_token(requester).unwrap();
+        assert_eq!(token, expected_token);
     }
 
     #[test]
