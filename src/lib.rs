@@ -784,7 +784,7 @@ impl RefreshTokenRequest {
     pub fn get_token<T, H>(
         &self,
         http: H,
-        auth_header: Vec<(String, String)>,
+        additional_headers: Option<Vec<(String, String)>>,
     ) -> Result<T, Box<dyn Error>>
     where
         T: Token + DeserializeOwned,
@@ -793,7 +793,9 @@ impl RefreshTokenRequest {
         let url = self.token_url().map_err(|e| e.to_string())?;
         let form_data = self.req_body().map_err(|e| e.to_string())?;
         let mut headers = self.get_headers();
-        headers.extend(auth_header);
+        if let Some(header) = additional_headers {
+            headers.extend(header);
+        }
         let (status_code, response) = http
             .post(url, form_data, headers)
             .map_err(|e| e.to_string())?;
