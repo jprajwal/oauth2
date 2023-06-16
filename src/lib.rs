@@ -572,6 +572,12 @@ pub struct ClientCredentialsGrantAuthTokenRequest {
 }
 
 impl ClientCredentialsGrantAuthTokenRequest {
+    pub fn new(token_url: String) -> Self {
+        Self {
+            token_url,
+            scope: None,
+        }
+    }
     pub fn set_scope(mut self, scopes: Vec<String>) -> Self {
         self.scope = Some(scopes);
         self
@@ -678,6 +684,13 @@ pub struct RefreshTokenRequest {
 }
 
 impl RefreshTokenRequest {
+    pub fn new(token_url: String, refresh_token: String) -> Self {
+        Self {
+            refresh_token_url: token_url,
+            refresh_token,
+            scope: None,
+        }
+    }
     pub fn set_scope(mut self, scopes: Vec<String>) -> Self {
         self.scope = Some(scopes);
         self
