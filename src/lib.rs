@@ -188,6 +188,14 @@ impl AuthCodeAccessTokenRequest {
         if let Some(ref client_secret) = self.client_secret {
             params.push(("client_secret", client_secret.as_str()));
         }
+        if let Some(ref extras) = self.extras {
+            params.extend(
+                extras
+                    .iter()
+                    .map(|(a, b)| (a.as_str(), b.as_str()))
+                    .collect::<Vec<_>>(),
+            );
+        }
         let body = serde_urlencoded::to_string(&params).map_err(|e| e.to_string())?;
         Ok(body)
     }
@@ -487,6 +495,7 @@ pub struct OwnerPasswordAccessTokenRequest {
     token_url: String,
     username: String,
     password: String,
+    extras: Option<HashMap<String, String>>,
     scope: Option<Vec<String>>,
 }
 
@@ -505,6 +514,11 @@ impl OwnerPasswordAccessTokenRequest {
         self
     }
 
+    pub fn extra_params(mut self, k: String, v: String) -> Self {
+        self.extras.get_or_insert(HashMap::new()).insert(k, v);
+        self
+    }
+
     pub fn get_headers(&self) -> Vec<(String, String)> {
         return vec![(
             "Content-Type".into(),
@@ -517,12 +531,21 @@ impl OwnerPasswordAccessTokenRequest {
             .scope
             .clone()
             .map_or(String::default(), |scopes| scopes.join(" "));
-        let params = vec![
+        let mut params = vec![
             ("grant_type", "password"),
             ("username", self.username.as_str()),
             ("password", self.password.as_str()),
             ("scope", scope_as_string.as_str()),
         ];
+
+        if let Some(ref extras) = self.extras {
+            params.extend(
+                extras
+                    .iter()
+                    .map(|(a, b)| (a.as_str(), b.as_str()))
+                    .collect::<Vec<_>>(),
+            );
+        }
         let body = serde_urlencoded::to_string(&params).map_err(|e| e.to_string())?;
         Ok(body)
     }
@@ -568,6 +591,7 @@ impl OwnerPasswordAccessTokenRequest {
 
 pub struct ClientCredentialsGrantAuthTokenRequest {
     token_url: String,
+    extras: Option<HashMap<String, String>>,
     scope: Option<Vec<String>>,
 }
 
@@ -575,11 +599,17 @@ impl ClientCredentialsGrantAuthTokenRequest {
     pub fn new(token_url: String) -> Self {
         Self {
             token_url,
+            extras: None,
             scope: None,
         }
     }
     pub fn set_scope(mut self, scopes: Vec<String>) -> Self {
         self.scope = Some(scopes);
+        self
+    }
+
+    pub fn extra_params(mut self, k: String, v: String) -> Self {
+        self.extras.get_or_insert(HashMap::new()).insert(k, v);
         self
     }
 
@@ -595,10 +625,18 @@ impl ClientCredentialsGrantAuthTokenRequest {
             .scope
             .clone()
             .map_or(String::default(), |scopes| scopes.join(" "));
-        let params = vec![
+        let mut params = vec![
             ("grant_type", "password"),
             ("scope", scope_as_string.as_str()),
         ];
+        if let Some(ref extras) = self.extras {
+            params.extend(
+                extras
+                    .iter()
+                    .map(|(a, b)| (a.as_str(), b.as_str()))
+                    .collect::<Vec<_>>(),
+            );
+        }
         let body = serde_urlencoded::to_string(&params).map_err(|e| e.to_string())?;
         Ok(body)
     }
@@ -680,6 +718,7 @@ mod utils {
 pub struct RefreshTokenRequest {
     refresh_token_url: String,
     refresh_token: String,
+    extras: Option<HashMap<String, String>>,
     scope: Option<Vec<String>>,
 }
 
@@ -688,9 +727,16 @@ impl RefreshTokenRequest {
         Self {
             refresh_token_url: token_url,
             refresh_token,
+            extras: None,
             scope: None,
         }
     }
+
+    pub fn extra_params(mut self, k: String, v: String) -> Self {
+        self.extras.get_or_insert(HashMap::new()).insert(k, v);
+        self
+    }
+
     pub fn set_scope(mut self, scopes: Vec<String>) -> Self {
         self.scope = Some(scopes);
         self
@@ -708,11 +754,19 @@ impl RefreshTokenRequest {
             .scope
             .clone()
             .map_or(String::default(), |scopes| scopes.join(" "));
-        let params = vec![
+        let mut params = vec![
             ("grant_type", "refresh_token"),
             ("refresh_token", self.refresh_token.as_str()),
             ("scope", scope_as_string.as_str()),
         ];
+        if let Some(ref extras) = self.extras {
+            params.extend(
+                extras
+                    .iter()
+                    .map(|(a, b)| (a.as_str(), b.as_str()))
+                    .collect::<Vec<_>>(),
+            );
+        }
         let body = serde_urlencoded::to_string(&params).map_err(|e| e.to_string())?;
         Ok(body)
     }
