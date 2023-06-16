@@ -188,6 +188,11 @@ impl AuthCodeAccessTokenRequest {
         if let Some(ref client_secret) = self.client_secret {
             params.push(("client_secret", client_secret.as_str()));
         }
+        let scope_as_string: String;
+        if let Some(ref scopes) = self.scope {
+            scope_as_string = scopes.join(" ");
+            params.push(("scope", scope_as_string.as_str()));
+        }
         if let Some(ref extras) = self.extras {
             params.extend(
                 extras
@@ -528,16 +533,16 @@ impl OwnerPasswordAccessTokenRequest {
     }
 
     pub fn req_body(&self) -> Result<String, Box<dyn Error>> {
-        let scope_as_string: String = self
-            .scope
-            .clone()
-            .map_or(String::default(), |scopes| scopes.join(" "));
         let mut params = vec![
             ("grant_type", "password"),
             ("username", self.username.as_str()),
             ("password", self.password.as_str()),
-            ("scope", scope_as_string.as_str()),
         ];
+        let scope_as_string: String;
+        if let Some(ref scopes) = self.scope {
+            scope_as_string = scopes.join(" ");
+            params.push(("scope", scope_as_string.as_str()));
+        }
 
         if let Some(ref extras) = self.extras {
             params.extend(
@@ -622,14 +627,12 @@ impl ClientCredentialsGrantAuthTokenRequest {
     }
 
     pub fn req_body(&self) -> Result<String, Box<dyn Error>> {
-        let scope_as_string: String = self
-            .scope
-            .clone()
-            .map_or(String::default(), |scopes| scopes.join(" "));
-        let mut params = vec![
-            ("grant_type", "password"),
-            ("scope", scope_as_string.as_str()),
-        ];
+        let mut params = vec![("grant_type", "password")];
+        let scope_as_string: String;
+        if let Some(ref scopes) = self.scope {
+            scope_as_string = scopes.join(" ");
+            params.push(("scope", scope_as_string.as_str()));
+        }
         if let Some(ref extras) = self.extras {
             params.extend(
                 extras
@@ -751,15 +754,16 @@ impl RefreshTokenRequest {
     }
 
     pub fn req_body(&self) -> Result<String, Box<dyn Error>> {
-        let scope_as_string: String = self
-            .scope
-            .clone()
-            .map_or(String::default(), |scopes| scopes.join(" "));
         let mut params = vec![
             ("grant_type", "refresh_token"),
             ("refresh_token", self.refresh_token.as_str()),
-            ("scope", scope_as_string.as_str()),
         ];
+
+        let scopes_as_string: String;
+        if let Some(ref scopes) = self.scope {
+            scopes_as_string = scopes.join(" ");
+            params.push(("scope", scopes_as_string.as_str()));
+        }
         if let Some(ref extras) = self.extras {
             params.extend(
                 extras
