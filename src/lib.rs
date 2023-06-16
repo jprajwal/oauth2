@@ -505,6 +505,7 @@ impl OwnerPasswordAccessTokenRequest {
             token_url,
             username,
             password,
+            extras: None,
             scope: None,
         }
     }
