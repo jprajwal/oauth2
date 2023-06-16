@@ -671,6 +671,75 @@ mod utils {
     }
 }
 
+pub struct RefreshTokenRequest {
+    refresh_token_url: String,
+    refresh_token: String,
+    scope: Option<Vec<String>>,
+}
+
+impl RefreshTokenRequest {
+    pub fn set_scope(mut self, scopes: Vec<String>) -> Self {
+        self.scope = Some(scopes);
+        self
+    }
+
+    pub fn get_headers(&self) -> Vec<(String, String)> {
+        return vec![(
+            "Content-Type".into(),
+            "application/x-www-form-urlencoded".into(),
+        )];
+    }
+
+    pub fn req_body(&self) -> Result<String, Box<dyn Error>> {
+        let scope_as_string: String = self
+            .scope
+            .clone()
+            .map_or(String::default(), |scopes| scopes.join(" "));
+        let params = vec![
+            ("grant_type", "refresh_token"),
+            ("refresh_token", self.refresh_token.as_str()),
+            ("scope", scope_as_string.as_str()),
+        ];
+        let body = serde_urlencoded::to_string(&params).map_err(|e| e.to_string())?;
+        Ok(body)
+    }
+
+    fn token_url(&self) -> Result<String, Box<dyn Error>> {
+        // TODO: Validate URL
+        return Ok(self.refresh_token_url.clone());
+    }
+
+    pub fn get_token<T, H>(
+        &self,
+        http: H,
+        auth_header: Vec<(String, String)>,
+    ) -> Result<T, Box<dyn Error>>
+    where
+        T: Token + DeserializeOwned,
+        H: HttpAdapter,
+    {
+        let url = self.token_url().map_err(|e| e.to_string())?;
+        let form_data = self.req_body().map_err(|e| e.to_string())?;
+        let mut headers = self.get_headers();
+        headers.extend(auth_header);
+        let (status_code, response) = http
+            .post(url, form_data, headers)
+            .map_err(|e| e.to_string())?;
+        match status_code {
+            status if status >= 200 && status < 300 => {
+                let token: T =
+                    serde_json::from_str(response.as_str()).map_err(|e| e.to_string())?;
+                return Ok(token);
+            }
+            _ => {
+                let error: AuthTokenError =
+                    serde_json::from_str(response.as_str()).map_err(|_| response.clone())?;
+                return Err(Box::new(error));
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
