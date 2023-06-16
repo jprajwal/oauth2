@@ -66,33 +66,36 @@ impl AuthCodeRequest {
         self
     }
 
-    pub fn get_url(&self) -> Result<String, Box<dyn Error>> {
-        let mut url: String = self.auth_url.clone();
-
-        let result: String;
+    pub fn get_request_params_as_vec(&self) -> Vec<(String, String)> {
         let mut params = vec![
-            ("client_id", self.client_id.as_str()),
-            ("response_type", self.response_type.as_str()),
+            ("client_id".into(), self.client_id.clone()),
+            ("response_type".into(), self.response_type.clone()),
         ];
         if let Some(ref redirect_url) = self.redirect_url {
-            params.push(("redirect_uri", redirect_url.as_str()));
+            params.push(("redirect_uri".into(), redirect_url.clone()));
         }
         if let Some(ref state) = self.state {
-            params.push(("state", state.as_str()));
+            params.push(("state".into(), state.clone()));
         }
         if let Some(ref scopes) = self.scope {
-            result = utils::join(scopes.iter().map(|s| s.as_str()), ' ');
-            params.push(("scope", result.as_str()));
+            let result = utils::join(scopes.iter().map(|s| s.as_str()), ' ');
+            params.push(("scope".into(), result));
         }
         if let Some(ref extras) = self.extras {
             params.extend(
                 extras
                     .iter()
-                    .map(|(a, b)| (a.as_str(), b.as_str()))
+                    .map(|(a, b)| (a.clone(), b.clone()))
                     .collect::<Vec<_>>(),
             );
         }
+        params
+    }
 
+    pub fn get_prepared_url(&self) -> Result<String, Box<dyn Error>> {
+        let mut url: String = self.auth_url.clone();
+
+        let params = self.get_request_params_as_vec();
         url.push('?');
         url.push_str(
             serde_urlencoded::to_string(params)
@@ -164,7 +167,14 @@ impl AuthCodeAccessTokenRequest {
         return Ok(self.token_url.clone());
     }
 
-    fn req_body(&self) -> Result<String, Box<dyn Error>> {
+    pub fn get_headers(&self) -> Vec<(String, String)> {
+        return vec![(
+            "Content-Type".into(),
+            "application/x-www-form-urlencoded".into(),
+        )];
+    }
+
+    pub fn req_body(&self) -> Result<String, Box<dyn Error>> {
         let mut params = vec![("grant_type", self.grant_type.as_str())];
         if let Some(ref code) = self.code {
             params.push(("code", code));
@@ -182,17 +192,22 @@ impl AuthCodeAccessTokenRequest {
         Ok(body)
     }
 
-    pub fn get_token<'a, T, R>(&self, requester: R) -> Result<T, Box<dyn Error>>
+    pub fn get_token<'a, T, R>(
+        &self,
+        requester: R,
+        additional_headers: Option<Vec<(String, String)>>,
+    ) -> Result<T, Box<dyn Error>>
     where
         T: Token + DeserializeOwned,
-        R: PostRequest,
+        R: HttpAdapter,
     {
         let url = self.token_url().map_err(|e| e.to_string())?;
         let form_data = self.req_body().map_err(|e| e.to_string())?;
-        let headers = vec![(
-            "Content-Type".into(),
-            "application/x-www-form-urlencoded".into(),
-        )];
+        let mut headers = self.get_headers();
+        match additional_headers {
+            Some(header) => headers.extend(header),
+            None => {}
+        }
         let (status_code, response) = requester
             .post(url, form_data, headers)
             .map_err(|e| e.to_string())?;
@@ -308,11 +323,17 @@ impl AuthCodeToken {
     }
 }
 
-pub trait PostRequest {
+pub trait HttpAdapter {
     fn post(
         &self,
         url: String,
         body: String,
+        headers: Vec<(String, String)>,
+    ) -> Result<(u16, String), Box<dyn Error>>;
+
+    fn get(
+        &self,
+        url: String,
         headers: Vec<(String, String)>,
     ) -> Result<(u16, String), Box<dyn Error>>;
 }
@@ -484,7 +505,14 @@ impl OwnerPasswordAccessTokenRequest {
         self
     }
 
-    fn req_body(&self) -> Result<String, Box<dyn Error>> {
+    pub fn get_headers(&self) -> Vec<(String, String)> {
+        return vec![(
+            "Content-Type".into(),
+            "application/x-www-form-urlencoded".into(),
+        )];
+    }
+
+    pub fn req_body(&self) -> Result<String, Box<dyn Error>> {
         let scope_as_string: String = self
             .scope
             .clone()
@@ -504,18 +532,23 @@ impl OwnerPasswordAccessTokenRequest {
         return Ok(self.token_url.clone());
     }
 
-    pub fn get_token<T, R>(&self, requester: R) -> Result<T, Box<dyn Error>>
+    pub fn get_token<T, R>(
+        &self,
+        http: R,
+        additional_headers: Option<Vec<(String, String)>>,
+    ) -> Result<T, Box<dyn Error>>
     where
         T: Token + DeserializeOwned,
-        R: PostRequest,
+        R: HttpAdapter,
     {
         let url = self.token_url().map_err(|e| e.to_string())?;
         let form_data = self.req_body().map_err(|e| e.to_string())?;
-        let headers = vec![(
-            "Content-Type".into(),
-            "application/x-www-form-urlencoded".into(),
-        )];
-        let (status_code, response) = requester
+        let mut headers = self.get_headers();
+        match additional_headers {
+            Some(header) => headers.extend(header),
+            None => {}
+        }
+        let (status_code, response) = http
             .post(url, form_data, headers)
             .map_err(|e| e.to_string())?;
         match status_code {
@@ -526,7 +559,74 @@ impl OwnerPasswordAccessTokenRequest {
             }
             _ => {
                 let error: AuthTokenError =
+                    serde_json::from_str(response.as_str()).map_err(|_| response.clone())?;
+                return Err(Box::new(error));
+            }
+        }
+    }
+}
+
+pub struct ClientCredentialsGrantAuthTokenRequest {
+    token_url: String,
+    scope: Option<Vec<String>>,
+}
+
+impl ClientCredentialsGrantAuthTokenRequest {
+    pub fn set_scope(mut self, scopes: Vec<String>) -> Self {
+        self.scope = Some(scopes);
+        self
+    }
+
+    pub fn get_headers(&self) -> Vec<(String, String)> {
+        return vec![(
+            "Content-Type".into(),
+            "application/x-www-form-urlencoded".into(),
+        )];
+    }
+
+    pub fn req_body(&self) -> Result<String, Box<dyn Error>> {
+        let scope_as_string: String = self
+            .scope
+            .clone()
+            .map_or(String::default(), |scopes| scopes.join(" "));
+        let params = vec![
+            ("grant_type", "password"),
+            ("scope", scope_as_string.as_str()),
+        ];
+        let body = serde_urlencoded::to_string(&params).map_err(|e| e.to_string())?;
+        Ok(body)
+    }
+
+    fn token_url(&self) -> Result<String, Box<dyn Error>> {
+        // TODO: Validate URL
+        return Ok(self.token_url.clone());
+    }
+
+    pub fn get_token<T, H>(
+        &self,
+        http: H,
+        auth_header: Vec<(String, String)>,
+    ) -> Result<T, Box<dyn Error>>
+    where
+        T: Token + DeserializeOwned,
+        H: HttpAdapter,
+    {
+        let url = self.token_url().map_err(|e| e.to_string())?;
+        let form_data = self.req_body().map_err(|e| e.to_string())?;
+        let mut headers = self.get_headers();
+        headers.extend(auth_header);
+        let (status_code, response) = http
+            .post(url, form_data, headers)
+            .map_err(|e| e.to_string())?;
+        match status_code {
+            status if status >= 200 && status < 300 => {
+                let token: T =
                     serde_json::from_str(response.as_str()).map_err(|e| e.to_string())?;
+                return Ok(token);
+            }
+            _ => {
+                let error: AuthTokenError =
+                    serde_json::from_str(response.as_str()).map_err(|_| response.clone())?;
                 return Err(Box::new(error));
             }
         }
@@ -639,7 +739,7 @@ mod tests {
             .extra_params("include_granted_scopes".into(), "true".into())
             .set_state("state_parameter_passthrough_value".into())
             .set_redirect_url("https://oauth2.example.com/code".into());
-        let url = request.get_url().unwrap_or("".into());
+        let url = request.get_prepared_url().unwrap_or("".into());
         println!("url: {url}");
     }
 
@@ -648,7 +748,7 @@ mod tests {
         response: String,
     }
 
-    impl PostRequest for TestPostRequester {
+    impl HttpAdapter for TestPostRequester {
         fn post(
             &self,
             _url: String,
@@ -656,6 +756,14 @@ mod tests {
             _headers: Vec<(String, String)>,
         ) -> Result<(u16, String), Box<dyn Error>> {
             Ok((200, self.response.clone()))
+        }
+
+        fn get(
+            &self,
+            _url: String,
+            _headers: Vec<(String, String)>,
+        ) -> Result<(u16, String), Box<dyn Error>> {
+            Err(String::default().into())
         }
     }
 
@@ -684,7 +792,7 @@ mod tests {
             ]),
             generated_time: SystemTime::now(),
         };
-        let token: AuthCodeToken = token_request.get_token(requester).unwrap();
+        let token: AuthCodeToken = token_request.get_token(requester, None).unwrap();
         assert_eq!(token, expected_token);
     }
 
