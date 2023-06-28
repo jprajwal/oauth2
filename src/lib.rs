@@ -1,6 +1,3 @@
-use std::boxed::Box;
-use std::error::Error;
-
 mod auth_code;
 mod auth_token_error;
 mod client_cred_grant_token_request;
@@ -25,19 +22,4 @@ pub trait Token {
     fn token_type(&self) -> String;
     fn scopes(&self) -> Option<Vec<String>>;
     fn is_valid(&self) -> bool;
-}
-
-pub trait HttpAdapter {
-    fn post(
-        &self,
-        url: String,
-        body: String,
-        headers: Vec<(String, String)>,
-    ) -> Result<(u16, String), Box<dyn Error>>;
-
-    fn get(
-        &self,
-        url: String,
-        headers: Vec<(String, String)>,
-    ) -> Result<(u16, String), Box<dyn Error>>;
 }
