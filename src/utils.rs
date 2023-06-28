@@ -42,3 +42,12 @@ where
         v.push(item);
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_join() {
+        assert_eq!(join(["a", "b", "c"].into_iter(), ' '), "a b c");
+    }
+}

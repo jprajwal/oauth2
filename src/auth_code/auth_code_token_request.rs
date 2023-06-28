@@ -144,3 +144,61 @@ impl AuthCodeAccessTokenRequest {
     }
     */
 }
+#[cfg(test)]
+mod tests {
+    /*
+    use super::*;
+    #[derive(Debug)]
+    struct TestPostRequester {
+        response: String,
+    }
+
+    impl HttpAdapter for TestPostRequester {
+        fn post(
+            &self,
+            _url: String,
+            _body: String,
+            _headers: Vec<(String, String)>,
+        ) -> Result<(u16, String), Box<dyn Error>> {
+            Ok((200, self.response.clone()))
+        }
+
+        fn get(
+            &self,
+            _url: String,
+            _headers: Vec<(String, String)>,
+        ) -> Result<(u16, String), Box<dyn Error>> {
+            Err(String::default().into())
+        }
+    }
+
+    #[test]
+    fn test_auth_code_get_token() {
+        let requester = TestPostRequester {
+            response: String::from(
+                r#"{
+                    "access_token": "test_token",
+                    "refresh_token": "test_refresh_token",
+                    "expires_in": 3600,
+                    "token_type": "Bearer",
+                    "scope": "test_scope test_another_scope"
+                }"#,
+            ),
+        };
+        let token_request = AuthCodeAccessTokenRequest::new("test_url".into(), "code".into());
+        let expected_token = AuthCodeToken {
+            access_token: "test_token".into(),
+            token_type: "Bearer".into(),
+            refresh_token: Some("test_refresh_token".into()),
+            expires_in: Some(3600),
+            scope: Some(vec![
+                "test_scope".to_owned(),
+                "test_another_scope".to_owned(),
+            ]),
+            generated_time: SystemTime::now(),
+        };
+        let token: AuthCodeToken = token_request.get_token(requester, None).unwrap();
+        assert_eq!(token, expected_token);
+    }
+    */
+}
