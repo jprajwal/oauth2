@@ -1,10 +1,10 @@
 use crate::Token;
-use serde::{self, Deserialize, Deserializer, Serialize};
+use serde::{self, Deserialize, Deserializer};
 use std::cmp::PartialEq;
 use std::fmt;
 use std::time::SystemTime;
 
-#[derive(Debug, Eq, PartialEq, Serialize, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 enum Scope {
     Array(Vec<String>),
     Str(String),
@@ -60,13 +60,12 @@ impl<'de> serde::de::Deserialize<'de> for Scope {
     }
 }
 
-#[derive(Debug, Eq, Deserialize, Serialize)]
+#[derive(Debug, Eq, Deserialize)]
 pub struct AuthCodeToken {
     access_token: String,
     token_type: String,
     refresh_token: Option<String>,
     expires_in: Option<u32>,
-    // #[serde(deserialize_with = "utils::deserialize_scope")]
     scope: Option<Scope>,
     #[serde(skip, default = "SystemTime::now")]
     generated_time: SystemTime,
@@ -182,12 +181,12 @@ mod tests {
     #[test]
     fn test_auth_token_deserializtion_scope_is_space_seperated_string() {
         let json_data = r#"{
-    "access_token": "test_token",
-    "refresh_token": "test_refresh_token",
-    "expires_in": 3600,
-    "token_type": "Bearer",
-    "scope": "test_scope test_another_scope"
-}"#;
+            "access_token": "test_token",
+            "refresh_token": "test_refresh_token",
+            "expires_in": 3600,
+            "token_type": "Bearer",
+            "scope": "test_scope test_another_scope"
+        }"#;
         let token: AuthCodeToken = serde_json::from_str(json_data).unwrap();
         assert_eq!(
             token.scopes(),
