@@ -1,8 +1,64 @@
-use crate::utils;
 use crate::Token;
-use serde::{self, Deserialize, Serialize};
+use serde::{self, Deserialize, Deserializer, Serialize};
 use std::cmp::PartialEq;
+use std::fmt;
 use std::time::SystemTime;
+
+#[derive(Debug, Eq, PartialEq, Serialize, Clone)]
+enum Scope {
+    Array(Vec<String>),
+    Str(String),
+}
+
+struct MyVisitor;
+
+impl<'de> serde::de::Visitor<'de> for MyVisitor {
+    type Value = Scope;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "Failed to parse scopes")?;
+        Ok(())
+    }
+
+    fn visit_seq<A>(self, mut value: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::SeqAccess<'de>,
+    {
+        let mut vector: Vec<String> = Vec::with_capacity(value.size_hint().unwrap_or(0));
+        loop {
+            let element = value.next_element()?;
+            match element {
+                Some(data) => vector.push(data),
+                None => break,
+            }
+        }
+        Ok(Scope::Array(vector))
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(Scope::Str(String::from(value)))
+    }
+
+    fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(Scope::Str(v))
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for Scope {
+    fn deserialize<D>(d: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let visitor = MyVisitor {};
+        d.deserialize_any(visitor)
+    }
+}
 
 #[derive(Debug, Eq, Deserialize, Serialize)]
 pub struct AuthCodeToken {
@@ -10,8 +66,8 @@ pub struct AuthCodeToken {
     token_type: String,
     refresh_token: Option<String>,
     expires_in: Option<u32>,
-    #[serde(deserialize_with = "utils::deserialize_space_sep_vec")]
-    scope: Option<Vec<String>>,
+    // #[serde(deserialize_with = "utils::deserialize_scope")]
+    scope: Option<Scope>,
     #[serde(skip, default = "SystemTime::now")]
     generated_time: SystemTime,
 }
@@ -27,19 +83,16 @@ impl PartialEq for AuthCodeToken {
 }
 
 impl Token for AuthCodeToken {
-    fn set_refresh_token(mut self, refresh_token: String) -> Self {
+    fn set_refresh_token(&mut self, refresh_token: String) {
         self.refresh_token = Some(refresh_token);
-        self
     }
 
-    fn set_exprires_in(mut self, expires_in: u32) -> Self {
+    fn set_exprires_in(&mut self, expires_in: u32) {
         self.expires_in = Some(expires_in);
-        self
     }
 
-    fn set_scope(mut self, scopes: Vec<String>) -> Self {
-        self.scope = Some(scopes);
-        self
+    fn set_scope(&mut self, scopes: Vec<String>) {
+        self.scope = Some(Scope::Str(scopes.join(" ")));
     }
 
     fn access_token(&self) -> String {
@@ -54,8 +107,11 @@ impl Token for AuthCodeToken {
         self.token_type.clone()
     }
 
-    fn scopes(&self) -> Option<Vec<String>> {
-        self.scope.clone()
+    fn scopes(&self) -> Option<String> {
+        self.scope.clone().map(|v| match v {
+            Scope::Array(ref arr) => arr.join(" "),
+            Scope::Str(ref s) => s.clone(),
+        })
     }
 
     fn is_valid(&self) -> bool {
@@ -93,6 +149,7 @@ impl AuthCodeToken {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json;
     use std::time::Duration;
     #[test]
     fn test_auth_token_is_valid() {
@@ -120,5 +177,49 @@ mod tests {
             generated_time: now.checked_sub(Duration::from_secs(3600)).unwrap(),
         };
         assert_eq!(token.is_valid(), false);
+    }
+
+    #[test]
+    fn test_auth_token_deserializtion_scope_is_space_seperated_string() {
+        let json_data = r#"{
+    "access_token": "test_token",
+    "refresh_token": "test_refresh_token",
+    "expires_in": 3600,
+    "token_type": "Bearer",
+    "scope": "test_scope test_another_scope"
+}"#;
+        let token: AuthCodeToken = serde_json::from_str(json_data).unwrap();
+        assert_eq!(
+            token.scopes(),
+            Some(String::from("test_scope test_another_scope"))
+        );
+    }
+
+    #[test]
+    fn test_auth_token_deserializtion_scope_is_array() {
+        let json_data = r#"{
+            "access_token": "test_token",
+            "refresh_token": "test_refresh_token",
+            "expires_in": 3600,
+            "token_type": "Bearer",
+            "scope": ["test_scope", "test_another_scope"]
+        }"#;
+        let token: AuthCodeToken = serde_json::from_str(json_data).unwrap();
+        assert_eq!(
+            token.scopes(),
+            Some(String::from("test_scope test_another_scope"))
+        );
+    }
+
+    #[test]
+    fn test_auth_token_deserializtion_scope_is_absent() {
+        let json_data = r#"{
+            "access_token": "test_token",
+            "refresh_token": "test_refresh_token",
+            "expires_in": 3600,
+            "token_type": "Bearer"
+        }"#;
+        let token: AuthCodeToken = serde_json::from_str(json_data).unwrap();
+        assert_eq!(token.scopes(), None);
     }
 }

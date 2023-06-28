@@ -1,8 +1,4 @@
 use crate::utils;
-use serde_urlencoded;
-use std::boxed::Box;
-use std::cmp::PartialEq;
-use std::error::Error;
 
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct AuthCodeRequest {
@@ -74,19 +70,6 @@ impl AuthCodeRequest {
         }
         params
     }
-
-    pub fn get_prepared_url(&self) -> Result<String, Box<dyn Error>> {
-        let mut url: String = self.auth_url.clone();
-
-        let params = self.get_request_params_as_vec();
-        url.push('?');
-        url.push_str(
-            serde_urlencoded::to_string(params)
-                .map_err(|e| e.to_string())?
-                .as_str(),
-        );
-        Ok(url.to_string())
-    }
 }
 
 #[cfg(test)]
@@ -151,7 +134,5 @@ mod tests {
         request.extra_params("include_granted_scopes".into(), "true".into());
         request.set_state("state_parameter_passthrough_value".into());
         request.set_redirect_url("https://oauth2.example.com/code".into());
-        let url = request.get_prepared_url().unwrap_or("".into());
-        println!("url: {url}");
     }
 }
