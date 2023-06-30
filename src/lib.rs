@@ -2,6 +2,7 @@ mod auth_code;
 mod auth_token_error;
 mod client_cred_grant_token_request;
 mod code_verifier;
+mod internal_traits;
 mod owner_password_token_request;
 mod refresh_token_request;
 mod utils;
@@ -12,6 +13,7 @@ pub use auth_code::{
 pub use auth_token_error::{AuthTokenError, AuthTokenErrorKind};
 pub use client_cred_grant_token_request::ClientCredentialsGrantAuthTokenRequest;
 pub use code_verifier::{ChallengMethod, CodeVerifier};
+pub use internal_traits::OAuthRequestTrait;
 pub use owner_password_token_request::OwnerPasswordAccessTokenRequest;
 pub use refresh_token_request::RefreshTokenRequest;
 

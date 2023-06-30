@@ -1,4 +1,4 @@
-use crate::utils;
+use crate::internal_traits;
 
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct AuthCodeRequest {
@@ -9,6 +9,40 @@ pub struct AuthCodeRequest {
     scope: Option<Vec<String>>,
     state: Option<String>,
     extras: Option<Vec<(String, String)>>,
+}
+
+impl internal_traits::OAuthParams for AuthCodeRequest {
+    fn get_response_type(&self) -> Option<String> {
+        Some(self.response_type.clone())
+    }
+
+    fn get_redirect_url(&self) -> Option<String> {
+        self.redirect_url.clone()
+    }
+
+    fn get_client_id(&self) -> Option<String> {
+        Some(self.client_id.clone())
+    }
+
+    fn get_scopes_mut(&mut self) -> Option<&mut Vec<String>> {
+        self.scope.as_mut()
+    }
+
+    fn get_scopes_ref(&self) -> Option<&Vec<String>> {
+        self.scope.as_ref()
+    }
+
+    fn get_state(&self) -> Option<String> {
+        self.state.clone()
+    }
+
+    fn get_extra_params_mut(&mut self) -> Option<&mut Vec<(String, String)>> {
+        self.extras.as_mut()
+    }
+
+    fn get_extra_params_ref(&self) -> Option<&Vec<(String, String)>> {
+        self.extras.as_ref()
+    }
 }
 
 impl AuthCodeRequest {
@@ -28,6 +62,15 @@ impl AuthCodeRequest {
         self.redirect_url = Some(redirect_url);
     }
 
+    pub fn set_state(&mut self, state: String) {
+        self.state = Some(state);
+    }
+
+    pub fn extra_params(&mut self, k: String, v: String) {
+        self.extras.get_or_insert(vec![]).push((k, v));
+    }
+
+    /*
     pub fn add_scope(&mut self, scope: String) {
         self.scope.get_or_insert(vec![]).push(scope);
     }
@@ -40,14 +83,6 @@ impl AuthCodeRequest {
             self.scope = Some(vec![]);
         }
         utils::append_to_vec(self.scope.as_mut().unwrap(), scopes);
-    }
-
-    pub fn set_state(&mut self, state: String) {
-        self.state = Some(state);
-    }
-
-    pub fn extra_params(&mut self, k: String, v: String) {
-        self.extras.get_or_insert(vec![]).push((k, v));
     }
 
     pub fn get_request_params_as_vec(&self) -> Vec<(String, String)> {
@@ -70,11 +105,13 @@ impl AuthCodeRequest {
         }
         params
     }
+    */
 }
 
 #[cfg(test)]
 mod tests {
     use super::AuthCodeRequest;
+    use crate::OAuthRequestTrait;
 
     #[test]
     fn test_default() {
