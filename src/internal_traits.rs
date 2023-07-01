@@ -48,6 +48,7 @@ pub trait OAuthRequestTrait {
     where
         I: IntoIterator<Item = String>;
     fn get_request_params_as_vec(&self) -> Vec<(String, String)>;
+    fn add_extra_param(&mut self, k: String, v: String);
 }
 
 impl<T> OAuthRequestTrait for T
@@ -95,7 +96,7 @@ where
         }
         match self.get_scopes_ref() {
             Some(v) => {
-                params.push((String::from("scopes"), v.join(" ")));
+                params.push((String::from("scope"), v.join(" ")));
             }
             None => {}
         }
@@ -110,5 +111,12 @@ where
             None => {}
         }
         return params;
+    }
+
+    fn add_extra_param(&mut self, key: String, val: String) {
+        match self.get_extra_params_mut() {
+            Some(v) => v.push((key, val)),
+            None => {}
+        }
     }
 }

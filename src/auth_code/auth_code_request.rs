@@ -2,7 +2,6 @@ use crate::internal_traits;
 
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct AuthCodeRequest {
-    auth_url: String,
     client_id: String,
     response_type: String,
     redirect_url: Option<String>,
@@ -46,9 +45,8 @@ impl internal_traits::OAuthParams for AuthCodeRequest {
 }
 
 impl AuthCodeRequest {
-    pub fn new(auth_url: String, client_id: String, response_type: String) -> Self {
+    pub fn new(client_id: String, response_type: String) -> Self {
         Self {
-            auth_url,
             client_id,
             response_type,
             redirect_url: None,
@@ -65,51 +63,10 @@ impl AuthCodeRequest {
     pub fn set_state(&mut self, state: String) {
         self.state = Some(state);
     }
-
-    pub fn extra_params(&mut self, k: String, v: String) {
-        self.extras.get_or_insert(vec![]).push((k, v));
-    }
-
-    /*
-    pub fn add_scope(&mut self, scope: String) {
-        self.scope.get_or_insert(vec![]).push(scope);
-    }
-
-    pub fn add_scopes<I>(&mut self, scopes: I)
-    where
-        I: IntoIterator<Item = String>,
-    {
-        if self.scope.is_none() {
-            self.scope = Some(vec![]);
-        }
-        utils::append_to_vec(self.scope.as_mut().unwrap(), scopes);
-    }
-
-    pub fn get_request_params_as_vec(&self) -> Vec<(String, String)> {
-        let mut params = vec![
-            ("client_id".into(), self.client_id.clone()),
-            ("response_type".into(), self.response_type.clone()),
-        ];
-        if let Some(ref redirect_url) = self.redirect_url {
-            params.push(("redirect_uri".into(), redirect_url.clone()));
-        }
-        if let Some(ref state) = self.state {
-            params.push(("state".into(), state.clone()));
-        }
-        if let Some(ref scopes) = self.scope {
-            let result = utils::join(scopes.iter().map(|s| s.as_str()), ' ');
-            params.push(("scope".into(), result));
-        }
-        if let Some(ref extras) = self.extras {
-            utils::append_to_vec(&mut params, extras.iter().map(|a| a.clone()));
-        }
-        params
-    }
-    */
 }
 
 #[cfg(test)]
-mod tests {
+mod auth_code_request_tests {
     use super::AuthCodeRequest;
     use crate::OAuthRequestTrait;
 
@@ -119,7 +76,6 @@ mod tests {
         assert_eq!(
             def,
             AuthCodeRequest {
-                auth_url: "".into(),
                 client_id: "".into(),
                 response_type: "".into(),
                 redirect_url: None,
@@ -132,15 +88,10 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let new = AuthCodeRequest::new(
-            "test_url".into(),
-            "test_id".into(),
-            "test_response_type".into(),
-        );
+        let new = AuthCodeRequest::new("test_id".into(), "test_response_type".into());
         assert_eq!(
             new,
             AuthCodeRequest {
-                auth_url: String::from("test_url"),
                 client_id: String::from("test_id"),
                 response_type: String::from("test_response_type"),
                 redirect_url: None,
@@ -153,7 +104,7 @@ mod tests {
 
     #[test]
     fn test_set_redirect_url() {
-        let mut new = AuthCodeRequest::new("".into(), "".into(), "".into());
+        let mut new = AuthCodeRequest::new("".into(), "".into());
         new.set_redirect_url("test_redirect_url".into());
         assert!(new.redirect_url == Some(String::from("test_redirect_url")));
     }
@@ -161,15 +112,30 @@ mod tests {
     #[test]
     fn test_google_auth_request_url() {
         let mut request = AuthCodeRequest::new(
-            "https://accounts.google.com/o/oauth2/v2/auth".into(),
+            // "https://accounts.google.com/o/oauth2/v2/auth".into(),
             "test_id".into(),
             "code".into(),
         );
         request.add_scope("https://www.googleapis.com/auth/drive.metadata.readonly".into());
         request.add_scope("https://www.googleapis.com/auth/drive.metadata.writeonly".into());
-        request.extra_params("access_type".into(), "offline".into());
-        request.extra_params("include_granted_scopes".into(), "true".into());
+        request.add_extra_param("access_type".into(), "offline".into());
+        request.add_extra_param("include_granted_scopes".into(), "true".into());
         request.set_state("state_parameter_passthrough_value".into());
         request.set_redirect_url("https://oauth2.example.com/code".into());
+
+        let params = request.get_request_params_as_vec();
+        println!("{params:?}");
+
+        assert!(params.contains(&("client_id".into(), "test_id".into())));
+        assert!(params.contains(&("response_type".into(), "code".into())));
+        assert!(params.contains(&(
+            "redirect_uri".into(),
+            "https://oauth2.example.com/code".into()
+        )));
+        assert!(params.contains(&("scope".into(), "https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/drive.metadata.writeonly".into())));
+        assert!(params.contains(&("state".into(), "state_parameter_passthrough_value".into())));
+        assert!(params.contains(&("include_granted_scopes".into(), "true".into())));
+        assert!(params.contains(&("access_type".into(), "offline".into())));
+        assert_eq!(params.len(), 7);
     }
 }
