@@ -2,11 +2,11 @@ use crypto_hash;
 use data_encoding;
 use rand;
 
-struct Unreserved;
+struct Random;
 
-impl Unreserved {
+impl Random {
     fn new() -> Self {
-        return Unreserved {};
+        return Random {};
     }
 
     fn get_octet_sequence(&self, len: u8) -> Vec<u8> {
@@ -23,7 +23,7 @@ pub struct CodeVerifier(String);
 
 impl CodeVerifier {
     pub fn new() -> Self {
-        let unreserved = Unreserved::new();
+        let unreserved = Random::new();
         let octet_seq = unreserved.get_octet_sequence(32);
         let encoded = data_encoding::BASE64URL.encode(&octet_seq);
         return Self(encoded);
@@ -50,7 +50,7 @@ mod tests {
     use super::*;
     #[test]
     fn test_get_octect_sequence() {
-        let unreserved = Unreserved::new();
+        let unreserved = Random::new();
         let res = unreserved.get_octet_sequence(43);
         res.iter().for_each(|c| print!("{}", c));
         println!("");

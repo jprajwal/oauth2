@@ -13,7 +13,7 @@ pub use auth_code::{
 pub use auth_token_error::{AuthTokenError, AuthTokenErrorKind};
 pub use client_cred_grant_token_request::ClientCredentialsGrantAuthTokenRequest;
 pub use code_verifier::{ChallengMethod, CodeVerifier};
-pub use internal_traits::OAuthRequestTrait;
+pub use internal_traits::OAuthParams;
 pub use owner_password_token_request::OwnerPasswordAccessTokenRequest;
 pub use refresh_token_request::RefreshTokenRequest;
 

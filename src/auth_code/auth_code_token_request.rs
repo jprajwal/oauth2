@@ -1,4 +1,5 @@
 use crate::utils;
+use crate::OAuthParams;
 
 #[derive(Debug)]
 pub struct AuthCodeAccessTokenRequest {
@@ -8,6 +9,50 @@ pub struct AuthCodeAccessTokenRequest {
     client_secret: Option<String>,
     scope: Option<Vec<String>>,
     extras: Option<Vec<(String, String)>>,
+}
+
+impl OAuthParams for AuthCodeAccessTokenRequest {
+    fn get_grant_type(&self) -> Option<String> {
+        "authorization_code".to_owned().into()
+    }
+
+    fn get_code(&self) -> Option<String> {
+        self.code.clone().into()
+    }
+
+    fn get_redirect_url(&self) -> Option<String> {
+        self.redirect_url.clone().into()
+    }
+
+    fn get_client_id(&self) -> Option<String> {
+        self.client_id.clone().into()
+    }
+
+    fn get_client_secret(&self) -> Option<String> {
+        self.client_secret.clone()
+    }
+
+    fn get_scopes_mut(&mut self) -> Option<&mut Vec<String>> {
+        if self.scope.is_none() {
+            self.scope = Some(vec![])
+        }
+        self.scope.as_mut()
+    }
+
+    fn get_scopes_ref(&self) -> Option<&Vec<String>> {
+        self.scope.as_ref()
+    }
+
+    fn get_extra_params_mut(&mut self) -> Option<&mut Vec<(String, String)>> {
+        if self.extras.is_none() {
+            self.extras = Some(vec![])
+        }
+        self.extras.as_mut()
+    }
+
+    fn get_extra_params_ref(&self) -> Option<&Vec<(String, String)>> {
+        self.extras.as_ref()
+    }
 }
 
 impl AuthCodeAccessTokenRequest {
@@ -22,53 +67,26 @@ impl AuthCodeAccessTokenRequest {
         }
     }
 
-    pub fn extra_params(&mut self, k: String, v: String) {
-        self.extras.get_or_insert(Vec::new()).push((k, v));
+    pub fn set_client_secret(&mut self, secret: String) {
+        self.client_secret = Some(secret);
     }
 
     pub fn add_scope(&mut self, scope: String) {
-        self.scope.get_or_insert(vec![]).push(scope);
+        utils::add_scope(self, scope);
     }
 
     pub fn add_scopes<I>(&mut self, scopes: I)
     where
         I: IntoIterator<Item = String>,
     {
-        if self.scope.is_none() {
-            self.scope = Some(vec![]);
-        }
-        utils::append_to_vec(self.scope.as_mut().unwrap(), scopes);
+        utils::add_scopes(self, scopes);
     }
 
-    pub fn set_client_secret(&mut self, secret: String) {
-        self.client_secret = Some(secret);
-    }
-
-    pub fn get_headers(&self) -> Vec<(String, String)> {
-        return vec![(
-            "Content-Type".into(),
-            "application/x-www-form-urlencoded".into(),
-        )];
+    pub fn add_extra_param(&mut self, key: String, value: String) {
+        utils::add_extra_param(self, key, value);
     }
 
     pub fn get_request_params_as_vec(&self) -> Vec<(String, String)> {
-        let mut params = vec![
-            ("grant_type".into(), "authorization_code".into()),
-            ("code".into(), self.code.clone()),
-            ("redirect_uri".into(), self.redirect_url.clone()),
-            ("client_id".into(), self.client_id.clone()),
-        ];
-        if let Some(ref client_secret) = self.client_secret {
-            params.push(("client_secret".into(), client_secret.clone()));
-        }
-        let scope_as_string: String;
-        if let Some(ref scopes) = self.scope {
-            scope_as_string = scopes.join(" ");
-            params.push(("scope".into(), scope_as_string));
-        }
-        if let Some(ref extras) = self.extras {
-            utils::append_to_vec(&mut params, extras.iter().map(|a| a.clone()));
-        }
-        return params;
+        utils::get_request_params_as_vec(self)
     }
 }
